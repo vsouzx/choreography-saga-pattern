@@ -4,8 +4,8 @@ CLAUDE.md
 docs/
 
 # Binaries
-api
-orders-service
+/api
+/orders-service
 *.exe
 
 # IDE

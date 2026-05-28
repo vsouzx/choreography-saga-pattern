@@ -1,0 +1,15 @@
+server:
+  port: ":8083"
+
+mysql:
+  dsn: "root:root@tcp(localhost:3308)/payments?parseTime=true"
+
+kafka:
+  brokers:
+    - "localhost:29092"
+  inventory_reserved_topic: "inventory.reserved"
+  payment_authorized_topic: "payments.authorized"
+  payment_denied_topic: "payments.denied"
+
+outbox:
+  batch_size: 10

@@ -1,0 +1,22 @@
+server:
+  port: ":8081"
+
+mysql:
+  dsn: "root:root@tcp(localhost:3307)/orders?parseTime=true"
+
+redis:
+  addr: "localhost:6379"
+  pass: ""
+  db: 0
+
+kafka:
+  brokers:
+    - "localhost:29092"
+  orders_created_topic: "orders.created"
+  orders_confirmed_topic: "orders.confirmed"
+  inventory_topic: "inventory.insufficient-stock"
+  inventory_released_topic: "inventory.released"
+  payments_topic: "payments.authorized"
+
+outbox:
+  batch_size: 10
