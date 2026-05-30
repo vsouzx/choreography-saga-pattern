@@ -16,5 +16,7 @@ datasources:
       derivedFields:
         - name: TraceID
           datasourceUid: jaeger
-          matcherRegex: '"trace_id":"(\w+)"'
+          matcherType: label
+          matcherRegex: trace_id
           url: '$${__value.raw}'
+          urlDisplayLabel: 'View Trace'

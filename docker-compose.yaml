@@ -143,6 +143,8 @@ services:
     image: grafana/loki:latest
     ports:
       - "3100:3100"
+    volumes:
+      - ./loki/loki-config.yaml:/etc/loki/local-config.yaml:ro
     command: -config.file=/etc/loki/local-config.yaml
 
   otel-collector:

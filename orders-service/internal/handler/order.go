@@ -29,6 +29,7 @@ func (oh *OrderHandler) Create(c *gin.Context) {
 	log.With(zap.String("idempotencyKey", c.GetString("idempotencyKey"))).Info("received order request")
 	var orderRequest domain.OrderRequest
 	if err := c.ShouldBindJSON(&orderRequest); err != nil {
+		log.With(zap.String("idempotencyKey", c.GetString("idempotencyKey"))).Info("invalid request body")
 		_ = c.Error(domain.NewBadRequestError("invalid request body"))
 		return
 	}
@@ -39,6 +40,5 @@ func (oh *OrderHandler) Create(c *gin.Context) {
 		_ = c.Error(err)
 		return
 	}
-	c.Status(http.StatusCreated)
-	log.With(zap.String("idempotencyKey", c.GetString("idempotencyKey"))).Info("Order created successfully")
+	c.Status(http.StatusAccepted)
 }

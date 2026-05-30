@@ -21,6 +21,15 @@ processors:
       - action: insert
         key: loki.resource.labels
         value: service.name
+  transform/logs:
+    log_statements:
+      - context: log
+        statements:
+          - set(attributes["level"], severity_text)
+          - set(attributes["trace_id"], trace_id)
+          - set(attributes["span_id"], span_id)
+          - set(attributes["msg"], body)
+          - set(body, attributes)
 
 service:
   pipelines:
@@ -30,5 +39,5 @@ service:
       exporters: [otlp_grpc/jaeger]
     logs:
       receivers: [otlp]
-      processors: [batch, resource]
+      processors: [batch, transform/logs, resource]
       exporters: [otlp_http/loki]
