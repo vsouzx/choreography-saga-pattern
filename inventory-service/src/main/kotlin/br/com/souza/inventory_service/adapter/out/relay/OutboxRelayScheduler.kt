@@ -1,6 +1,7 @@
 package br.com.souza.inventory_service.adapter.out.relay
 
 import br.com.souza.inventory_service.application.ports.out.OutboxEventRepositoryPort
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.apache.kafka.clients.producer.ProducerRecord
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.core.KafkaTemplate
@@ -37,12 +38,12 @@ class OutboxRelayScheduler(
 
                 kafkaTemplate.send(record).get()
                 outboxRepository.markAsSent(id)
-                logger.info("Outbox event published: id={}, topic={}", id, event.topic)
+                logger.info("Outbox event published", kv("id", id), kv("topic", event.topic))
             } catch (ex: Exception) {
-                logger.error("Failed to publish outbox event: id={}", id, ex)
+                logger.error("Failed to publish outbox event", kv("id", id), ex)
                 if (event.retriesCount + 1 >= event.maxRetries) {
                     outboxRepository.markAsDeadLetter(id)
-                    logger.warn("Outbox event moved to dead letter: id={}", id)
+                    logger.warn("Outbox event moved to dead letter", kv("id", id))
                 } else {
                     outboxRepository.markAsFailed(id)
                 }

@@ -6,6 +6,7 @@ import br.com.souza.inventory_service.application.ports.`in`.ReserveStockUseCase
 import br.com.souza.inventory_service.infrastructure.observability.TraceContextExtractor
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.SpanKind
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.messaging.handler.annotation.Header
@@ -35,7 +36,7 @@ class OrderCreatedKafkaConsumer(
 
         span.makeCurrent().use {
             try {
-                logger.info("Received order created event: orderId={}", event.orderId)
+                logger.info("Received order created event", kv("order_id", event.orderId))
 
                 val command = ReserveStockCommand(
                     orderId = event.orderId,

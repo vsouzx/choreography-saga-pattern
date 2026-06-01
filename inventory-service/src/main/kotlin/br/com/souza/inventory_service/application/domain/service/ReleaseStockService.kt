@@ -8,6 +8,7 @@ import br.com.souza.inventory_service.application.ports.out.OutboxEventRepositor
 import br.com.souza.inventory_service.application.ports.out.StockRepositoryPort
 import br.com.souza.inventory_service.application.ports.out.StockReservationRepositoryPort
 import com.fasterxml.jackson.databind.ObjectMapper
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -30,21 +31,21 @@ class ReleaseStockService(
         val aggregateId = command.orderId
 
         if (outboxRepository.existsByAggregateIdAndAggregateType(aggregateId, aggregateType, listOf(eventType))) {
-            logger.info("Event already processed, skipping: orderId={}, eventType={}", command.orderId, eventType)
+            logger.info("Event already processed, skipping", kv("order_id", command.orderId), kv("event_type", eventType))
             return
         }
 
-        logger.info("Processing stock release: orderId={}", command.orderId)
+        logger.info("Processing stock release", kv("order_id", command.orderId))
 
         val reservation = reservationRepository.findByOrderId(command.orderId)
         if (reservation == null) {
-            logger.warn("Reservation not found: orderId={}", command.orderId)
+            logger.warn("Reservation not found", kv("order_id", command.orderId))
             return
         }
 
         val stock = stockRepository.findByProductIdWithLock(reservation.productId)
         if (stock == null) {
-            logger.warn("Stock not found for productId={}, orderId={}", reservation.productId, command.orderId)
+            logger.warn("Stock not found", kv("product_id", reservation.productId), kv("order_id", command.orderId))
             return
         }
 
@@ -53,12 +54,11 @@ class ReleaseStockService(
             updatedAt = LocalDateTime.now()
         )
         stockRepository.save(updatedStock)
-        logger.info("Stock restored: productId={}, previousQty={}, newQty={}",
-            reservation.productId, stock.quantityAvailable, updatedStock.quantityAvailable)
+        logger.info("Stock restored", kv("product_id", reservation.productId), kv("previous_qty", stock.quantityAvailable), kv("new_qty", updatedStock.quantityAvailable))
 
         val updatedReservation = reservation.copy(status = ReservationStatus.RELEASED)
         reservationRepository.save(updatedReservation)
-        logger.info("Reservation status updated to RELEASED: orderId={}", command.orderId)
+        logger.info("Reservation status updated to RELEASED", kv("order_id", command.orderId))
 
         val payload = objectMapper.writeValueAsString(
             mapOf(
@@ -78,6 +78,6 @@ class ReleaseStockService(
             traceParent = command.traceParent
         )
         outboxRepository.save(outboxEvent)
-        logger.info("Outbox event saved: topic=inventory.released, orderId={}", command.orderId)
+        logger.info("Outbox event saved", kv("topic", "inventory.released"), kv("order_id", command.orderId))
     }
 }

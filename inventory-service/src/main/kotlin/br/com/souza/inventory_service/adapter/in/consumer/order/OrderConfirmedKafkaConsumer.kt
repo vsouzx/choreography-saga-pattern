@@ -6,6 +6,7 @@ import br.com.souza.inventory_service.application.ports.`in`.ConfirmReservationU
 import br.com.souza.inventory_service.infrastructure.observability.TraceContextExtractor
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.SpanKind
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.messaging.handler.annotation.Header
@@ -33,7 +34,7 @@ class OrderConfirmedKafkaConsumer(
 
         span.makeCurrent().use {
             try {
-                logger.info("Received order confirmed event: orderId={}", event.orderId)
+                logger.info("Received order confirmed event", kv("order_id", event.orderId))
                 val command = ConfirmReservationCommand(
                     orderId = event.orderId,
                     traceParent = traceParent

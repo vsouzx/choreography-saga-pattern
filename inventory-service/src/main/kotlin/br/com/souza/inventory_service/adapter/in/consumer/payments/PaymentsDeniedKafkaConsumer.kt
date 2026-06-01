@@ -6,6 +6,7 @@ import br.com.souza.inventory_service.application.ports.`in`.ReleaseStockUseCase
 import br.com.souza.inventory_service.infrastructure.observability.TraceContextExtractor
 import io.opentelemetry.api.GlobalOpenTelemetry
 import io.opentelemetry.api.trace.SpanKind
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import org.springframework.kafka.annotation.KafkaListener
 import org.springframework.messaging.handler.annotation.Header
@@ -34,7 +35,7 @@ class PaymentsDeniedKafkaConsumer (
 
         span.makeCurrent().use {
             try {
-                logger.info("Received payment denied event: orderId={}, reason={}", payload.orderId, payload.reason)
+                logger.info("Received payment denied event", kv("order_id", payload.orderId), kv("reason", payload.reason))
 
                 val command = ReleaseStockCommand(
                     payload.orderId,

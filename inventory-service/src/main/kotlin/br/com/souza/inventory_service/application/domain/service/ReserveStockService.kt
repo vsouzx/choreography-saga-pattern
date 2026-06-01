@@ -7,6 +7,7 @@ import br.com.souza.inventory_service.application.ports.out.ProductRepositoryPor
 import br.com.souza.inventory_service.application.ports.out.StockRepositoryPort
 import br.com.souza.inventory_service.application.ports.out.StockReservationRepositoryPort
 import com.fasterxml.jackson.databind.ObjectMapper
+import net.logstash.logback.argument.StructuredArguments.kv
 import org.slf4j.LoggerFactory
 import org.springframework.stereotype.Service
 import org.springframework.transaction.annotation.Transactional
@@ -32,32 +33,28 @@ class ReserveStockService(
         val aggregateId = command.orderId
 
         if (outboxRepository.existsByAggregateIdAndAggregateType(aggregateId, aggregateType, listOf(failureEventType, successEventType))) {
-            logger.info("Event already processed, skipping: orderId={}", command.orderId)
+            logger.info("Event already processed, skipping", kv("order_id", command.orderId))
             return
         }
 
-        logger.info("Processing stock reservation: orderId={}, productId={}, quantity={}",
-            command.orderId, command.productId, command.quantity)
+        logger.info("Processing stock reservation", kv("order_id", command.orderId), kv("product_id", command.productId), kv("quantity", command.quantity))
 
         val product = productRepository.findById(command.productId)
         if (product == null) {
-            logger.warn("Product not found: productId={}, orderId={}",
-                command.productId, command.orderId)
+            logger.warn("Product not found", kv("product_id", command.productId), kv("order_id", command.orderId))
             saveFailureEvent(command, "PRODUCT_NOT_FOUND")
             return
         }
 
         val stock = stockRepository.findByProductIdWithLock(command.productId)
         if (stock == null) {
-            logger.warn("Stock not found: productId={}, orderId={}",
-                command.productId, command.orderId)
+            logger.warn("Stock not found", kv("product_id", command.productId), kv("order_id", command.orderId))
             saveFailureEvent(command, "STOCK_NOT_FOUND")
             return
         }
 
         if (stock.quantityAvailable < command.quantity) {
-            logger.warn("Insufficient stock: available={}, requested={}, productId={}, orderId={}",
-                stock.quantityAvailable, command.quantity, command.productId, command.orderId)
+            logger.warn("Insufficient stock", kv("quantity_available", stock.quantityAvailable), kv("requested_quantity", command.quantity), kv("product_id", command.productId), kv("order_id", command.orderId))
             saveFailureEvent(command, "INSUFFICIENT_STOCK")
             return
         }
@@ -67,8 +64,7 @@ class ReserveStockService(
             updatedAt = LocalDateTime.now()
         )
         stockRepository.save(updatedStock)
-        logger.info("Stock decremented: productId={}, previousQty={}, newQty={}",
-            command.productId, stock.quantityAvailable, updatedStock.quantityAvailable)
+        logger.info("Stock decremented", kv("product_id", command.productId), kv("previous_qty", stock.quantityAvailable), kv("new_qty", updatedStock.quantityAvailable))
 
         val reservation = StockReservation(
             id = UUID.randomUUID().toString(),
@@ -79,8 +75,7 @@ class ReserveStockService(
             createdAt = LocalDateTime.now()
         )
         reservationRepository.save(reservation)
-        logger.info("Stock reservation created: reservationId={}, orderId={}",
-            reservation.id, command.orderId)
+        logger.info("Stock reservation created", kv("reservation_id", reservation.id), kv("order_id", command.orderId))
 
         val amount = product.price * command.quantity
         val payload = objectMapper.writeValueAsString(
@@ -102,8 +97,7 @@ class ReserveStockService(
             traceParent = command.traceParent
         )
         outboxRepository.save(outboxEvent)
-        logger.info("Outbox event saved: topic=inventory.reserved, orderId={}, amount={}",
-            command.orderId, amount)
+        logger.info("Outbox event saved", kv("topic", "inventory.reserved"), kv("order_id", command.orderId), kv("amount", amount))
     }
 
     private fun saveFailureEvent(command: ReserveStockCommand, reason: String) {
@@ -125,7 +119,6 @@ class ReserveStockService(
             traceParent = command.traceParent
         )
         outboxRepository.save(outboxEvent)
-        logger.info("Outbox failure event saved: topic=inventory.insufficient-stock, orderId={}, reason={}",
-            command.orderId, reason)
+        logger.info("Outbox failure event saved", kv("topic", "inventory.insufficient-stock"), kv("order_id", command.orderId), kv("reason", reason))
     }
 }
