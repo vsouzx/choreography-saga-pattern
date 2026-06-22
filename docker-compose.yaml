@@ -185,6 +185,59 @@ services:
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_NAME: connect
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
 
+  orders-service:
+    image: vsouzx/orders-service:latest
+    ports:
+      - "8081:8081"
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql-orders:3306)/orders?parseTime=true"
+      REDIS_ADDR: "redis:6379"
+      KAFKA_BROKERS: "kafka:9092"
+      OTEL_EXPORTER_ENDPOINT: "otel-collector:4317"
+    depends_on:
+      mysql-orders:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      redis:
+        condition: service_started
+      otel-collector:
+        condition: service_started
+
+  payments-service:
+    image: vsouzx/payments-service:latest
+    ports:
+      - "8083:8083"
+    environment:
+      MYSQL_DSN: "root:root@tcp(mysql-payments:3306)/payments?parseTime=true"
+      KAFKA_BROKERS: "kafka:9092"
+      OTEL_EXPORTER_ENDPOINT: "otel-collector:4317"
+    depends_on:
+      mysql-payments:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
+  inventory-service:
+    image: vsouzx/inventory-service:latest
+    ports:
+      - "8082:8082"
+    environment:
+      SPRING_DATASOURCE_URL: "jdbc:postgresql://postgres-inventory:5432/inventory_db"
+      SPRING_DATASOURCE_USERNAME: "inventory"
+      SPRING_DATASOURCE_PASSWORD: "inventory"
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      OTEL_EXPORTER_OTLP_ENDPOINT: "http://otel-collector:4318"
+    depends_on:
+      postgres-inventory:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
+
 volumes:
   mysql_data:
   mysql_payments_data:
