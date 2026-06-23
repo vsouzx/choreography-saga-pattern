@@ -53,7 +53,7 @@ func (c *PaymentsConsumer) processMessage(ctx context.Context, msg kafka.Message
 
 	log := logger.FromContext(ctx, c.logger)
 
-	log.Info("received message", zap.String("key", string(msg.Key)))
+	log.Info("received payments.authorized message", zap.String("key", string(msg.Key)))
 
 	var event domain.PaymentsAuthorizedEvent
 	if err := json.Unmarshal(msg.Value, &event); err != nil {

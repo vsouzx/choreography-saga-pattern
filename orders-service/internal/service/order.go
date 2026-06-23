@@ -82,7 +82,6 @@ func (os *OrderService) CreateOrder(ctx context.Context, request domain.OrderReq
 	}
 	log = log.With(zap.String("idempotencyKey", request.IdempotencyKey))
 
-	log.Info("transaction committed")
 	log.With(zap.String("order_id", orderId)).Info("Order created")
 
 	return nil

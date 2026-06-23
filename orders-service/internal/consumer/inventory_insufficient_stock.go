@@ -53,7 +53,7 @@ func (c *InventoryConsumer) processMessage(ctx context.Context, msg kafka.Messag
 
 	log := logger.FromContext(ctx, c.logger)
 
-	log.Info("received message", zap.String("key", string(msg.Key)))
+	log.Info("received inventory.insufficient-stock message", zap.String("key", string(msg.Key)))
 
 	var event domain.InsufficientStockEvent
 	if err := json.Unmarshal(msg.Value, &event); err != nil {

@@ -35,7 +35,7 @@ class PaymentsDeniedKafkaConsumer (
 
         span.makeCurrent().use {
             try {
-                logger.info("Received payment denied event", kv("order_id", payload.orderId), kv("reason", payload.reason))
+                logger.info("Received payment.denied event", kv("order_id", payload.orderId), kv("reason", payload.reason))
 
                 val command = ReleaseStockCommand(
                     payload.orderId,

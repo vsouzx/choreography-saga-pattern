@@ -34,7 +34,7 @@ class OrderConfirmedKafkaConsumer(
 
         span.makeCurrent().use {
             try {
-                logger.info("Received order confirmed event", kv("order_id", event.orderId))
+                logger.info("Received order.confirmed event", kv("order_id", event.orderId))
                 val command = ConfirmReservationCommand(
                     orderId = event.orderId,
                     traceParent = traceParent

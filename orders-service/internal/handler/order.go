@@ -26,7 +26,7 @@ func NewOrderHandler(logger *zap.Logger,
 func (oh *OrderHandler) Create(c *gin.Context) {
 	log := logger.FromContext(c.Request.Context(), oh.logger)
 
-	log.With(zap.String("idempotencyKey", c.GetString("idempotencyKey"))).Info("received order request")
+	log.Info("received order request")
 	var orderRequest domain.OrderRequest
 	if err := c.ShouldBindJSON(&orderRequest); err != nil {
 		log.With(zap.String("idempotencyKey", c.GetString("idempotencyKey"))).Info("invalid request body")

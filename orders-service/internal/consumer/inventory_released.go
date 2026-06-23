@@ -53,7 +53,7 @@ func (c *InventoryReleasedConsumer) processMessage(ctx context.Context, msg kafk
 
 	log := logger.FromContext(ctx, c.logger)
 
-	log.Info("received message", zap.String("key", string(msg.Key)))
+	log.Info("received inventory.released message", zap.String("key", string(msg.Key)))
 
 	var event domain.InventoryReleasedEvent
 	if err := json.Unmarshal(msg.Value, &event); err != nil {

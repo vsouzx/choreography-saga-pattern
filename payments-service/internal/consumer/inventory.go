@@ -55,7 +55,7 @@ func (c *InventoryConsumer) processMessage(ctx context.Context, msg kafka.Messag
 
 	log := logger.FromContext(ctx, c.logger)
 
-	log.Info("received message", zap.String("key", string(msg.Key)))
+	log.Info("received inventory.reserved message", zap.String("key", string(msg.Key)))
 
 	var event domain.InventoryReservedEvent
 	if err := json.Unmarshal(msg.Value, &event); err != nil {
@@ -67,7 +67,7 @@ func (c *InventoryConsumer) processMessage(ctx context.Context, msg kafka.Messag
 		return
 	}
 
-	log.Info("processing inventory reserved event",
+	log.Info("processing inventory.reserved event",
 		zap.String("order_id", event.OrderID),
 		zap.Int("amount", event.Amount),
 		zap.String("payment_type", event.PaymentType),

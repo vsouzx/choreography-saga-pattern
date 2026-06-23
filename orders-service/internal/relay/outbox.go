@@ -55,7 +55,7 @@ func (or *OutboxRelay) poll(ctx context.Context) {
 	}
 
 	for _, event := range outboxEvents {
-		log.Info("sending event", zap.Any("event", event), zap.Int("retries_count", event.RetriesCount))
+		log.Info("sending event", zap.Any("event_id", event.ID), zap.Int("retries_count", event.RetriesCount))
 
 		writer, ok := or.writers[event.EventType]
 		if !ok {
