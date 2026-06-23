@@ -23,6 +23,15 @@ func NewOrderHandler(logger *zap.Logger,
 	}
 }
 
+func (oh *OrderHandler) List(c *gin.Context) {
+	orders, err := oh.orderService.ListOrders(c.Request.Context())
+	if err != nil {
+		_ = c.Error(err)
+		return
+	}
+	c.JSON(http.StatusOK, orders)
+}
+
 func (oh *OrderHandler) Create(c *gin.Context) {
 	log := logger.FromContext(c.Request.Context(), oh.logger)
 

@@ -165,6 +165,7 @@ func main() {
 	// routes
 	v1 := r.Group("/v1")
 	{
+		v1.GET("/orders", orderHandler.List)
 		v1.POST("/orders",
 			middleware.IdempotencyMiddleware(logger, redis),
 			orderHandler.Create)

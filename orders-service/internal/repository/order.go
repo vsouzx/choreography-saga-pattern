@@ -2,6 +2,7 @@ package repository
 
 import (
 	"context"
+	"database/sql"
 	"errors"
 	"fmt"
 	"orders-service/internal/domain"
@@ -14,6 +15,7 @@ type OrdersRepositoryInterface interface {
 	Save(ctx context.Context, tx DBTX, request domain.OrderRequest) (string, error)
 	UpdateStatusToCanceled(ctx context.Context, tx DBTX, orderId string, reason string) error
 	ConfirmOrder(ctx context.Context, tx DBTX, orderId string) (bool, error)
+	FindAll(ctx context.Context, db *sql.DB) ([]domain.OrderResponse, error)
 }
 
 type OrderRepository struct {
@@ -65,4 +67,29 @@ func (r *OrderRepository) ConfirmOrder(ctx context.Context, tx DBTX, orderId str
 	}
 
 	return rowsAffected > 0, nil
+}
+
+func (r *OrderRepository) FindAll(ctx context.Context, db *sql.DB) ([]domain.OrderResponse, error) {
+	query := `SELECT id, user_id, product_id, quantity, payment_type, status, reason, created_at FROM orders ORDER BY created_at DESC`
+
+	rows, err := db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("querying orders: %w", err)
+	}
+	defer rows.Close()
+
+	var orders []domain.OrderResponse
+	for rows.Next() {
+		var o domain.OrderResponse
+		if err := rows.Scan(&o.ID, &o.UserID, &o.ProductID, &o.Quantity, &o.PaymentType, &o.Status, &o.Reason, &o.CreatedAt); err != nil {
+			return nil, fmt.Errorf("scanning order: %w", err)
+		}
+		orders = append(orders, o)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterating orders: %w", err)
+	}
+
+	return orders, nil
 }

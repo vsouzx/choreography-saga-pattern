@@ -154,6 +154,14 @@ func (os *OrderService) ConfirmOrder(ctx context.Context, orderId string) error 
 	return nil
 }
 
+func (os *OrderService) ListOrders(ctx context.Context) ([]domain.OrderResponse, error) {
+	orders, err := os.orderRepository.FindAll(ctx, os.db)
+	if err != nil {
+		return nil, fmt.Errorf("listing orders: %w", err)
+	}
+	return orders, nil
+}
+
 func traceParentFromContext(ctx context.Context) string {
 	span := trace.SpanFromContext(ctx)
 	sc := span.SpanContext()
