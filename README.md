@@ -1,10 +1,10 @@
-# Saga Pattern - Event-Driven Microservices
+# Choreography Saga Pattern - Event-Driven Microservices
 
 Implementacao de um sistema de pedidos distribuido utilizando o **Saga Pattern (Choreography-based)** com **Transactional Outbox** para garantia de entrega de eventos. O projeto demonstra como coordenar transacoes distribuidas entre microservicos de forma resiliente, idempotente e observavel.
 
 ## Desenho arquitetura
 
-<img width="1405" height="813" alt="Image" src="https://github.com/user-attachments/assets/effd7891-5e74-404d-adee-35cc4095859f" />
+<img width="1839" height="725" alt="Image" src="https://github.com/user-attachments/assets/bff3d0ea-cfa3-478b-81eb-f3846e9aa101" />
 
 ## Indice
 
