@@ -1,80 +1,99 @@
 # Payments Service
 
-Microserviço de pagamentos em um sistema de processamento de pedidos baseado no padrão Saga. Consome eventos `inventory.reserved` do Kafka, processa pagamentos e produz eventos `payments.authorized` ou `payments.denied`.
-
-Faz parte do sistema distribuído **orders-saga**.
+Microservico de pagamentos puramente orientado a eventos. Consome `inventory.reserved` do Kafka, avalia regras de pagamento e produz `payments.authorized` ou `payments.denied` via **Transactional Outbox**. Nao expoe endpoints de criacao — opera exclusivamente via Kafka.
 
 ## Stack
 
-- **Go 1.25.8**
-- **Gin** — HTTP server (`:8081`)
-- **MySQL** — persistência
+- **Go 1.25** (Gin HTTP framework)
+- **MySQL** — persistencia de pagamentos e outbox
 - **Kafka** (`segmentio/kafka-go`) — mensageria
-- **OpenTelemetry** — tracing distribuído
+- **OpenTelemetry** — tracing distribuido
 - **Zap** — logging estruturado
+
+## Arquitetura
+
+Servico puramente event-driven — sem endpoints REST de usuario (apenas `/health`). Arquitetura em camadas: `consumer → service → repository`, com `relay` em background.
+
+```
+payments-service/
+├── cmd/api/main.go              # Entrypoint
+├── internal/
+│   ├── config/                  # Configuracao via Viper (config.yaml + env vars)
+│   ├── service/                 # Logica de avaliacao de pagamento
+│   ├── repository/              # Acesso a dados (MySQL)
+│   ├── domain/                  # Modelos de dominio e enums
+│   ├── consumer/                # Kafka consumer (inventory.reserved)
+│   ├── relay/                   # Outbox relay (polling a cada 5s, batch 10)
+│   └── logger/                  # Logger context-aware (Zap + OTel)
+├── INIT.sql                     # Schema do banco
+├── Dockerfile
+└── go.mod
+```
+
+## Participacao na Saga
+
+| Topico | Direcao | Acao |
+|--------|---------|------|
+| `inventory.reserved` | Consome | Dispara processamento de pagamento |
+| `payments.authorized` | Produz | Pagamento autorizado — saga continua |
+| `payments.denied` | Produz | Pagamento negado — dispara compensacao |
+
+## Regras de Pagamento
+
+| Tipo | Regra | Resultado |
+|------|-------|-----------|
+| `PIX` | Sempre | `AUTHORIZED` |
+| `CREDIT_CARD` | Valor ≤ 10000 centavos | `AUTHORIZED` |
+| `CREDIT_CARD` | Valor > 10000 centavos | `DENIED` |
+| `BOLETO` | Sempre | `DENIED` |
+
+## API
+
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| `GET` | `/health` | Health check |
+
+> Nenhum endpoint de criacao — opera exclusivamente via eventos Kafka.
 
 ## Executando
 
-### Pré-requisitos
+### Pre-requisitos
 
 - Go 1.25+
-- MySQL rodando em `localhost:3308`
-- Kafka rodando em `localhost:29092`
+- Infraestrutura via `docker compose up -d` no root do repositorio (MySQL porta 3308, Kafka porta 29092)
 
-### Build e execução
+### Build e execucao
 
 ```bash
-go build ./...           # Build
-go run cmd/api/main.go   # Executa o serviço
+go build -o payments-service ./cmd/api    # Build
+go run cmd/api/main.go                    # Executa o servico
 ```
 
 ### Testes
 
 ```bash
-go test ./...
+go test ./...                                             # Todos os testes
+go test ./internal/service/... -run TestProcessPayment    # Teste especifico
 ```
 
-## Configuração
+## Banco de Dados (MySQL, porta 3308)
 
-Todas as configurações são feitas via variáveis de ambiente:
+Schema em `INIT.sql`. Duas tabelas:
 
-| Variável | Default |
-|---|---|
-| `SERVER_PORT` | `:8081` |
-| `MYSQL_DSN` | `root:root@tcp(localhost:3308)/payments?parseTime=true` |
-| `KAFKA_BROKERS` | `localhost:29092` |
-| `KAFKA_INVENTORY_RESERVED_TOPIC` | `inventory.reserved` |
-| `KAFKA_PAYMENT_AUTHORIZED_TOPIC` | `payments.authorized` |
-| `KAFKA_PAYMENT_DENIED_TOPIC` | `payments.denied` |
-| `OUTBOX_BATCH_SIZE` | `10` |
+- **payments** — pagamentos com constraint `UNIQUE(order_id)` para idempotencia
+- **outbox_events** — eventos pendentes para publicacao via relay (`PENDING → PROCESSING → SENT` ou `→ FAILED → DEAD_LETTER`)
 
-## Tópicos Kafka
+## Configuracao
 
-| Direção | Tópico | Descrição |
-|---|---|---|
-| Consume | `inventory.reserved` | Dispara o processamento de pagamento |
-| Produz | `payments.authorized` | Pagamento autorizado — saga continua |
-| Produz | `payments.denied` | Pagamento negado — compensação |
+Configuracao via `config.yaml` com override por variaveis de ambiente (Viper).
 
-## Arquitetura
-
-```
-cmd/api/main.go          # Entrypoint
-internal/
-  config/                # Configuração, conexões (MySQL, Kafka), logger e tracer
-  logger/                # Logger context-aware com trace/span IDs
-```
-
-O serviço utiliza o padrão **Transactional Outbox** para garantir consistência entre o banco de dados e a publicação de eventos no Kafka.
-
-## Health Check
-
-```
-GET /health
-```
-
-## Endpoints
-
-| Método | Path | Descrição |
-|---|---|---|
-| GET | `/health` | Health check |
+| Variavel | Default | Descricao |
+|----------|---------|-----------|
+| `SERVER_PORT` | `:8083` | Porta do servidor HTTP |
+| `MYSQL_DSN` | `root:root@tcp(localhost:3308)/payments?parseTime=true` | DSN do MySQL |
+| `KAFKA_BROKERS` | `localhost:29092` | Brokers Kafka |
+| `KAFKA_INVENTORY_RESERVED_TOPIC` | `inventory.reserved` | Topico de estoque reservado |
+| `KAFKA_PAYMENT_AUTHORIZED_TOPIC` | `payments.authorized` | Topico de pagamento autorizado |
+| `KAFKA_PAYMENT_DENIED_TOPIC` | `payments.denied` | Topico de pagamento negado |
+| `OUTBOX_BATCH_SIZE` | `10` | Tamanho do batch do relay |
+| `OTEL_EXPORTER_ENDPOINT` | `localhost:4317` | Endpoint gRPC do OTel Collector |

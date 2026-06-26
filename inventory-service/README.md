@@ -1,58 +1,89 @@
 # Inventory Service
 
-Microservice responsible for managing products, stock, and stock reservations as part of a distributed orders saga (choreography pattern).
+Microservico responsavel por gerenciar produtos, estoque e reservas de estoque. Participa da saga de pedidos consumindo e produzindo eventos via Kafka com **Transactional Outbox**.
 
-## Tech Stack
+## Stack
 
-- **Kotlin** 2.1.10 on **Java 21**
+- **Kotlin** 2.1.10 com **Java 21**
 - **Spring Boot** 3.4.5 (Web MVC, Data JPA, Kafka)
-- **PostgreSQL** for persistence
-- **Apache Kafka** for event-driven communication
-- **OpenTelemetry** for distributed tracing
+- **PostgreSQL** — persistencia
+- **Apache Kafka** (Spring Kafka) — mensageria
+- **OpenTelemetry** — tracing distribuido
 
-## Architecture
+## Arquitetura
 
-Hexagonal architecture with clear separation between domain, application (use cases/ports), and adapter layers.
+Arquitetura Hexagonal com separacao clara entre dominio, aplicacao (use cases/ports) e adapters.
 
 ```
 src/main/kotlin/br/com/souza/inventory_service/
 ├── adapter/
 │   ├── in/
-│   │   ├── consumer/       # Kafka consumers (order, payments)
-│   │   └── web/            # REST controllers
-│   └── out/                # JPA repositories, outbox relay
+│   │   ├── consumer/             # Kafka consumers
+│   │   │   ├── order/            # OrderCreated, OrderConfirmed
+│   │   │   └── payments/         # PaymentsDenied
+│   │   └── web/                  # REST controllers
+│   └── out/
+│       ├── product/              # Product persistence (JPA)
+│       ├── stock/                # Stock persistence (JPA)
+│       ├── reservation/          # Reservation persistence (JPA)
+│       ├── relay/                # OutboxRelayScheduler (polling a cada 1s, batch 50)
+│       └── models/               # JPA entities
 ├── application/
 │   ├── domain/
-│   │   ├── model/          # Domain entities and commands
-│   │   └── service/        # Use case implementations
+│   │   ├── model/                # Modelos de dominio
+│   │   └── service/              # Use cases
+│   │       ├── ReserveStockService
+│   │       ├── ReleaseStockService
+│   │       └── ConfirmReservationService
 │   └── ports/
-│       ├── in/             # Input ports (use cases)
-│       └── out/            # Output ports (repositories)
+│       ├── in/                   # Ports de entrada (interfaces dos use cases)
+│       └── out/                  # Ports de saida (interfaces dos repositorios)
 └── infrastructure/
-    ├── kafka/              # Kafka consumer/producer config
-    └── observability/      # OpenTelemetry config
+    ├── kafka/                    # Configuracao Kafka consumer/producer
+    └── observability/            # Configuracao OpenTelemetry
 ```
 
-## Saga Participation
+## Participacao na Saga
 
-This service participates in the orders saga by consuming and producing Kafka events:
+| Topico | Direcao | Acao |
+|--------|---------|------|
+| `orders.created` | Consome | Reserva estoque para o pedido |
+| `orders.confirmed` | Consome | Confirma a reserva (etapa final do happy path) |
+| `payments.denied` | Consome | Libera estoque reservado (compensacao) |
+| `inventory.reserved` | Produz | Notifica que o estoque foi reservado |
+| `inventory.insufficient-stock` | Produz | Notifica que o estoque e insuficiente |
+| `inventory.released` | Produz | Notifica que o estoque foi liberado |
 
-| Topic | Direction | Action |
-|-------|-----------|--------|
-| `orders.created` | Consume | Reserves stock for the order |
-| `orders.confirmed` | Consume | Confirms the reservation (final happy path step) |
-| `payments.denied` | Consume | Releases reserved stock (compensation) |
-| `inventory.reserved` | Produce | Notifies that stock was reserved successfully |
-| `inventory.insufficient-stock` | Produce | Notifies that reservation failed |
-| `inventory.released` | Produce | Notifies that stock was released |
+## API
 
-## Running
+| Metodo | Rota | Descricao |
+|--------|------|-----------|
+| `GET` | `/v1/products` | Lista todos os produtos |
+| `POST` | `/v1/products` | Cria um produto |
+| `GET` | `/v1/products/stocks` | Lista todos os estoques |
+| `POST` | `/v1/products/{id}/stock` | Cria estoque para um produto |
+| `PATCH` | `/v1/products/{id}/stock/quantity` | Atualiza quantidade do estoque |
 
-### Prerequisites
+### Criar Produto e Estoque
+
+```bash
+# Criar produto
+curl -X POST http://localhost:8082/v1/products \
+  -H "Content-Type: application/json" \
+  -d '{"name": "Camiseta", "price": 5000}'
+
+# Criar estoque (product_id = 1)
+curl -X POST http://localhost:8082/v1/products/1/stock \
+  -H "Content-Type: application/json" \
+  -d '{"quantityAvailable": 100}'
+```
+
+## Executando
+
+### Pre-requisitos
 
 - Java 21+
-- PostgreSQL
-- Apache Kafka
+- Infraestrutura via `docker compose up -d` no root do repositorio (PostgreSQL porta 5432, Kafka porta 29092)
 
 ### Build
 
@@ -60,26 +91,44 @@ This service participates in the orders saga by consuming and producing Kafka ev
 ./mvnw package
 ```
 
-### Run tests
+### Testes
 
 ```bash
-./mvnw test
+./mvnw test                                       # Todos os testes
+./mvnw test -Dtest=ReserveStockServiceTest        # Teste especifico
 ```
 
-### Run the application
+### Executar a aplicacao
 
 ```bash
 ./mvnw spring-boot:run
 ```
 
-### Database setup
+## Banco de Dados (PostgreSQL, porta 5432)
 
-Apply the schema from `INIT.sql` to your PostgreSQL database before starting the service.
+Schema em `INIT.sql`. Tabelas:
 
-## API Endpoints
+- **products** — catalogo de produtos com preco em centavos
+- **stocks** — estoque por produto com constraint `UNIQUE(product_id)`
+- **stock_reservations** — reservas de estoque (`RESERVED`, `CONFIRMED`, `RELEASED`)
+- **outbox_events** — eventos pendentes para publicacao via relay
 
-- `POST /products` — Create a product
-- `GET /products` — List all products
-- `POST /products/{id}/stock` — Create stock for a product
-- `GET /products/{id}/stock` — List stock for a product
-- `PATCH /products/{id}/stock/quantity` — Update stock quantity
+### Controle de Concorrencia
+
+Utiliza **Pessimistic Locking** (`SELECT FOR UPDATE`) ao reservar estoque, prevenindo race conditions em cenarios de alta concorrencia.
+
+### Idempotencia
+
+Verifica `existsByAggregateId()` antes de processar um evento, evitando processamento duplicado.
+
+## Configuracao
+
+Configuracao via `application.yaml` com override por variaveis de ambiente (Spring Boot).
+
+| Propriedade | Default | Descricao |
+|-------------|---------|-----------|
+| `server.port` | `8082` | Porta do servidor |
+| `spring.datasource.url` | `jdbc:postgresql://localhost:5432/inventory_db` | URL do PostgreSQL |
+| `spring.datasource.username` | `inventory` | Usuario do banco |
+| `spring.datasource.password` | `inventory` | Senha do banco |
+| `spring.kafka.bootstrap-servers` | `localhost:29092` | Brokers Kafka |

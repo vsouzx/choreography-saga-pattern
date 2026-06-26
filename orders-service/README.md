@@ -1,80 +1,117 @@
 # Orders Service
 
-Serviço de pedidos em uma arquitetura de microsserviços baseada no padrão **Saga** para coordenação de transações distribuídas.
+Ponto de entrada do sistema de pedidos. Recebe requisicoes HTTP, cria pedidos com status `PENDING` e inicia a saga publicando eventos via **Transactional Outbox**. Consome eventos de confirmacao e cancelamento dos demais servicos.
+
+## Stack
+
+- **Go 1.25** (Gin HTTP framework)
+- **MySQL** — persistencia de pedidos e outbox
+- **Redis** — idempotencia via `Idempotency-Key` header
+- **Kafka** (`segmentio/kafka-go`) — mensageria
+- **OpenTelemetry** — tracing distribuido
+- **Zap** — logging estruturado
 
 ## Arquitetura
 
-O serviço utiliza o **Transactional Outbox Pattern**: ao criar um pedido, tanto o registro do pedido quanto um evento de outbox (`order.created`) são gravados no MySQL na mesma transação, garantindo entrega confiável de eventos para os consumidores downstream via Kafka.
-
-### Estrutura do Projeto
+Arquitetura em camadas: `handler → service → repository`, com `consumer` e `relay` como componentes de background.
 
 ```
 orders-service/
-├── cmd/api/          # Entrypoint — inicializa dependências e servidor Gin
+├── cmd/api/main.go              # Entrypoint
 ├── internal/
-│   ├── handler/      # HTTP handlers (binding de request, escrita de response)
-│   ├── service/      # Lógica de negócio e orquestração
-│   ├── repository/   # Persistência MySQL via database/sql
-│   ├── domain/       # Modelos de domínio, enums e payloads de eventos
-│   ├── consumer/     # Consumers Kafka para eventos de compensação da Saga
-│   └── config/       # Configuração via variáveis de ambiente
-├── INIT.sql          # Schema do banco (MySQL/InnoDB)
+│   ├── config/                  # Configuracao via Viper (config.yaml + env vars)
+│   ├── handler/                 # HTTP handlers (Gin)
+│   ├── service/                 # Logica de negocio
+│   ├── repository/              # Acesso a dados (MySQL)
+│   ├── domain/                  # Modelos de dominio e enums
+│   ├── consumer/                # Kafka consumers (saga)
+│   │   ├── payments.go          # Consome payments.authorized → ConfirmOrder
+│   │   ├── inventory_insufficient_stock.go  # Consome inventory.insufficient-stock → CancelOrder
+│   │   └── inventory_released.go            # Consome inventory.released → CancelOrder
+│   ├── relay/                   # Outbox relay (polling a cada 5s, batch 10)
+│   ├── middleware/              # Idempotencia (Redis) e error handler
+│   └── logger/                  # Logger context-aware (Zap + OTel)
+├── INIT.sql                     # Schema do banco
 ├── Dockerfile
 └── go.mod
 ```
 
-## Tecnologias
+## Participacao na Saga
 
-- **Go** (Gin HTTP framework)
-- **MySQL** — persistência de pedidos e outbox
-- **Redis** — reservado para verificações de idempotência
-- **Kafka** — mensageria para eventos da Saga
-- **OpenTelemetry** — tracing distribuído
+| Topico | Direcao | Acao |
+|--------|---------|------|
+| `orders.created` | Produz | Novo pedido criado — inicia a saga |
+| `orders.confirmed` | Produz | Pedido confirmado — notifica Inventory |
+| `payments.authorized` | Consome | Confirma o pedido (`CONFIRMED`) |
+| `inventory.insufficient-stock` | Consome | Cancela o pedido (`CANCELED`) |
+| `inventory.released` | Consome | Cancela o pedido (`CANCELED`) |
 
 ## API
 
-| Método | Rota | Descrição |
+| Metodo | Rota | Descricao |
 |--------|------|-----------|
-| GET | `/health` | Health check |
-| POST | `/v1/orders` | Criar um pedido |
+| `GET` | `/health` | Health check |
+| `GET` | `/v1/orders` | Lista todos os pedidos |
+| `POST` | `/v1/orders` | Cria um pedido (requer header `Idempotency-Key`) |
 
 ### Criar Pedido
 
 ```bash
-curl -X POST http://localhost:8080/v1/orders \
+curl -X POST http://localhost:8081/v1/orders \
   -H "Content-Type: application/json" \
+  -H "Idempotency-Key: $(uuidgen)" \
   -d '{
-    "userId": "uuid",
+    "userId": "550e8400-e29b-41d4-a716-446655440000",
     "productId": 1,
     "quantity": 2,
-    "total": 99.90,
-    "paymentType": "CREDIT_CARD"
+    "paymentType": "PIX"
   }'
 ```
 
-## Configuração
+## Executando
 
-| Variável | Default | Descrição |
-|----------|---------|-----------|
-| `SERVER_PORT` | `:8080` | Endereço HTTP |
-| `MYSQL_DSN` | `root:root@tcp(localhost:3307)/orders?parseTime=true` | Connection string MySQL |
-| `REDIS_ADDR` | `localhost:6379` | Endereço Redis |
-| `REDIS_PASS` | (vazio) | Senha Redis |
-| `KAFKA_INVENTORY_TOPIC` | `inventory.insufficient-stock` | Tópico Kafka para eventos de estoque insuficiente |
+### Pre-requisitos
 
-## Build & Run
+- Go 1.25+
+- Infraestrutura via `docker compose up -d` no root do repositorio (MySQL porta 3307, Redis porta 6379, Kafka porta 29092)
+
+### Build e execucao
 
 ```bash
-# Build
-go build -o orders-service ./cmd/api
-
-# Run
-go run ./cmd/api
+go build -o orders-service ./cmd/api    # Build
+go run cmd/api/main.go                  # Executa o servico
 ```
 
-## Database
+### Testes
 
-O schema está em `INIT.sql`. Duas tabelas principais:
+```bash
+go test ./...                                          # Todos os testes
+go test ./internal/service/... -run TestCreateOrder     # Teste especifico
+```
 
-- **orders** — pedidos com status (`PENDING`, `CONFIRMED`, `CANCELED`)
-- **outbox** — eventos pendentes para publicação via relay (`PENDING`, `PROCESSING`, `SENT`, `FAILED`, `DEAD_LETTER`)
+## Banco de Dados (MySQL, porta 3307)
+
+Schema em `INIT.sql`. Duas tabelas:
+
+- **orders** — pedidos com status (`PENDING`, `CONFIRMED`, `CANCELED`) e constraint `UNIQUE(idempotency_key)`
+- **outbox** — eventos pendentes para publicacao via relay (`PENDING → PROCESSING → SENT` ou `→ FAILED → DEAD_LETTER`)
+
+## Configuracao
+
+Configuracao via `config.yaml` com override por variaveis de ambiente (Viper).
+
+| Variavel | Default | Descricao |
+|----------|---------|-----------|
+| `SERVER_PORT` | `:8081` | Porta do servidor HTTP |
+| `MYSQL_DSN` | `root:root@tcp(localhost:3307)/orders?parseTime=true` | DSN do MySQL |
+| `REDIS_ADDR` | `localhost:6379` | Endereco do Redis |
+| `REDIS_PASS` | (vazio) | Senha do Redis |
+| `REDIS_DB` | `0` | Database do Redis |
+| `KAFKA_BROKERS` | `localhost:29092` | Brokers Kafka |
+| `KAFKA_ORDERS_CREATED_TOPIC` | `orders.created` | Topico de pedidos criados |
+| `KAFKA_ORDERS_CONFIRMED_TOPIC` | `orders.confirmed` | Topico de pedidos confirmados |
+| `KAFKA_INVENTORY_TOPIC` | `inventory.insufficient-stock` | Topico de estoque insuficiente |
+| `KAFKA_INVENTORY_RELEASED_TOPIC` | `inventory.released` | Topico de estoque liberado |
+| `KAFKA_PAYMENTS_TOPIC` | `payments.authorized` | Topico de pagamentos autorizados |
+| `OUTBOX_BATCH_SIZE` | `10` | Tamanho do batch do relay |
+| `OTEL_EXPORTER_ENDPOINT` | `localhost:4317` | Endpoint gRPC do OTel Collector |
