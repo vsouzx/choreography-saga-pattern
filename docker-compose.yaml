@@ -186,7 +186,7 @@ services:
       KAFKA_CLUSTERS_0_KAFKACONNECT_0_ADDRESS: http://kafka-connect:8083
 
   orders-service:
-    image: vsouzx/orders-service:latest
+    image: vsouzx/orders-service-choreography-saga:latest
     ports:
       - "8081:8081"
     environment:
@@ -205,7 +205,7 @@ services:
         condition: service_started
 
   payments-service:
-    image: vsouzx/payments-service:latest
+    image: vsouzx/payments-service-choreography-saga:latest
     ports:
       - "8083:8083"
     environment:
@@ -221,7 +221,7 @@ services:
         condition: service_started
 
   inventory-service:
-    image: vsouzx/inventory-service:latest
+    image: vsouzx/inventory-service-choreography-saga:latest
     ports:
       - "8082:8082"
     environment:

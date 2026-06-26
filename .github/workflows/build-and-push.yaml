@@ -42,7 +42,7 @@ jobs:
         with:
           context: ./orders-service
           push: true
-          tags: vsouzx/orders-service:latest
+          tags: vsouzx/orders-service-choreography-saga:latest
 
   build-payments:
     needs: detect-changes
@@ -60,7 +60,7 @@ jobs:
         with:
           context: ./payments-service
           push: true
-          tags: vsouzx/payments-service:latest
+          tags: vsouzx/payments-service-choreography-saga:latest
 
   build-inventory:
     needs: detect-changes
@@ -78,4 +78,4 @@ jobs:
         with:
           context: ./inventory-service
           push: true
-          tags: vsouzx/inventory-service:latest
+          tags: vsouzx/inventory-service-choreography-saga:latest
